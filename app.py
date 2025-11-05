@@ -7,11 +7,11 @@ from collections import deque
 
 app = Flask(__name__)
 
-# نگهداری 10 آیتم آخر
 ITEM_CACHE = deque(maxlen=10)
 CACHE = {"updated": 0}
 
-COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/the-open-network?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false"
+# Endpoint ساده CoinGecko برای TON
+COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd,btc&include_24hr_change=true&include_last_updated_at=true"
 EXCHANGE_URL = "https://api.exchangerate.host/latest?base=USD&symbols=IRR"
 
 RENDER_URL = "https://ton-1-rleg.onrender.com/ton.rss"
@@ -20,22 +20,12 @@ def build_item(data, ir_rate):
     now = datetime.utcnow()
     now_str = now.strftime("%a, %d %b %Y %H:%M:%S +0000")
 
-    market_data = data.get("market_data", {})
+    coin = data.get("the-open-network", {})
 
-    # مسیر دقیق JSON CoinGecko
-    usd = market_data.get("current_price", {}).get("usd", 0)
-    btc = market_data.get("current_price", {}).get("btc", 0)
-    change_1h = market_data.get("price_change_percentage_1h_in_currency", {}).get("usd", 0)
-    change_24h = market_data.get("price_change_percentage_24h", 0)
-    change_7d = market_data.get("price_change_percentage_7d", 0)
-    market_cap = market_data.get("market_cap", {}).get("usd", 0)
-    volume_24h = market_data.get("total_volume", {}).get("usd", 0)
-    updated_at_iso = market_data.get("last_updated", datetime.utcnow().isoformat())
-
-    try:
-        updated_ts = int(datetime.fromisoformat(updated_at_iso.replace("Z","")).timestamp())
-    except:
-        updated_ts = int(time.time())
+    usd = coin.get("usd", 0)
+    btc = coin.get("btc", 0)
+    change_24h = coin.get("usd_24h_change", 0)
+    updated_ts = coin.get("last_updated_at", int(time.time()))
 
     ir = round(usd * ir_rate)
 
@@ -47,12 +37,8 @@ def build_item(data, ir_rate):
     description = f"""💵 قیمت دلاری: {usd} USD
 🇮🇷 قیمت ریالی: {ir} IRR
 ⏱ آخرین بروزرسانی: {updated_utc} | {updated_iran}
-🔺 تغییر 1ساعته: {change_1h:.2f}%
 🔺 تغییر 24ساعته: {change_24h:.2f}%
-🔺 تغییر 7روزه: {change_7d:.2f}%
 💹 قیمت BTC: {btc}
-💰 مارکت کپ: ${market_cap:,}
-📊 حجم معاملات ۲۴ساعت: ${volume_24h:,}
 🔗 منبع: https://www.coingecko.com/en/coins/the-open-network
 """
 
@@ -67,7 +53,6 @@ def build_item(data, ir_rate):
     return item_xml
 
 def fetch_and_cache():
-    # کش 60 ثانیه
     if time.time() - CACHE["updated"] < 60:
         return
 
@@ -75,7 +60,7 @@ def fetch_and_cache():
         r = requests.get(COINGECKO_URL, timeout=10)
         data = r.json()
     except:
-        data = {"market_data": {}}
+        data = {"the-open-network": {}}
 
     try:
         r2 = requests.get(EXCHANGE_URL, timeout=10)
@@ -84,13 +69,13 @@ def fetch_and_cache():
         ir_rate = 42000
 
     item = build_item(data, ir_rate)
-    ITEM_CACHE.appendleft(item)  # آیتم جدید در اول لیست
+    ITEM_CACHE.appendleft(item)
     CACHE["updated"] = time.time()
 
 @app.route("/")
 def home():
     return """
-    <h2>Toncoin RSS Feed حرفه‌ای با آرشیو</h2>
+    <h2>Toncoin RSS Feed آماده و صحیح</h2>
     <p>برای مشاهده فید: <a href="/ton.rss">ton.rss</a></p>
     """
 
