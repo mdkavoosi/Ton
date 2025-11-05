@@ -10,8 +10,7 @@ app = Flask(__name__)
 ITEM_CACHE = deque(maxlen=10)
 CACHE = {"updated": 0}
 
-# لینک جدید DIA برای TON
-DIA_URL = "https://api.diadata.org/v1/assetQuotation/Ton/0x0000000000000000000000000000000000000000"
+BINANCE_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=TONUSDT"
 EXCHANGE_URL = "https://api.exchangerate.host/latest?base=USD&symbols=IRR"
 
 RENDER_URL = "https://ton-1-rleg.onrender.com/ton.rss"
@@ -20,10 +19,10 @@ def build_item(data, ir_rate):
     now = datetime.utcnow()
     now_str = now.strftime("%a, %d %b %Y %H:%M:%S +0000")
 
-    # تلاش برای خواندن داده از DIA
-    price_usd = data.get("price", 0)
-    volume_24h = data.get("volume24h", 0)
-    # می‌توان مقادیر دیگری چون market_cap را اضافه کرد اگر وجود داشته باشند
+    # گرفتن داده‌ها از Binance
+    price_usd = float(data.get("lastPrice", 0))
+    change_24h = float(data.get("priceChangePercent", 0))
+    volume_24h = float(data.get("quoteVolume", 0))
 
     ir = round(price_usd * ir_rate)
 
@@ -35,11 +34,12 @@ def build_item(data, ir_rate):
     description = f"""💵 قیمت دلاری: {price_usd} USD
 🇮🇷 قیمت ریالی: {ir} IRR
 ⏱ آخرین بروزرسانی: {updated_utc} | {updated_iran}
+🔺 تغییر ۲۴ساعته: {change_24h}%
 📊 حجم معاملات ۲۴ساعت: ${volume_24h}
-🔗 منبع: DIA Price Feed
+🔗 منبع: Binance
 """
 
-    guid = f"ton-dia-{int(time.time()*1000)}"
+    guid = f"ton-binance-{int(time.time()*1000)}"
     item_xml = f"""<item>
   <title>{title}</title>
   <description><![CDATA[{description}]]></description>
@@ -50,15 +50,14 @@ def build_item(data, ir_rate):
     return item_xml
 
 def fetch_and_cache():
-    # کش ۶۰ثانیه
     if time.time() - CACHE["updated"] < 60:
         return
 
     try:
-        r = requests.get(DIA_URL, timeout=10)
+        r = requests.get(BINANCE_URL, timeout=10)
         data = r.json()
     except:
-        data = {"price": 0, "volume24h": 0}
+        data = {"lastPrice": 0, "priceChangePercent": 0, "quoteVolume": 0}
 
     try:
         r2 = requests.get(EXCHANGE_URL, timeout=10)
@@ -73,7 +72,7 @@ def fetch_and_cache():
 @app.route("/")
 def home():
     return """
-    <h2>Toncoin RSS Feed با DIA</h2>
+    <h2>Toncoin RSS Feed با Binance API</h2>
     <p>برای مشاهده فید: <a href="/ton.rss">ton.rss</a></p>
     """
 
@@ -89,7 +88,7 @@ def ton_rss():
   <title>Toncoin (TON) قیمت لحظه‌ای</title>
   <link>https://ton-1-rleg.onrender.com/</link>
   <atom:link href="{RENDER_URL}" rel="self" type="application/rss+xml" />
-  <description>فید قیمت Toncoin (DIA) — به‌روزرسانی هر دقیقه</description>
+  <description>فید قیمت Toncoin از Binance — به‌روزرسانی هر دقیقه</description>
   <lastBuildDate>{now}</lastBuildDate>
   {items}
 </channel>
