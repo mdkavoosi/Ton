@@ -2,13 +2,12 @@ from flask import Flask, Response
 import requests
 import time
 from datetime import datetime
+import os  # برای گرفتن پورت از Render
 
 app = Flask(__name__)
 
-# Cache برای کاهش درخواست‌ها به API
 CACHE = {"rss": None, "updated": 0}
 
-# تنظیمات API
 COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
 COINGECKO_PARAMS = {
     "ids": "toncoin",
@@ -19,7 +18,6 @@ COINGECKO_PARAMS = {
 
 EXCHANGE_URL = "https://api.exchangerate.host/latest?base=USD&symbols=IRR"
 
-# تابع ساخت RSS
 def build_rss(data, ir_rate):
     now = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
     price = data.get("toncoin", {})
@@ -58,18 +56,15 @@ def build_rss(data, ir_rate):
 </rss>"""
     return rss
 
-# تابع گرفتن داده‌ها
 def fetch_and_cache():
     if time.time() - CACHE["updated"] < 60 and CACHE["rss"]:
         return CACHE["rss"]
 
-    # قیمت TON
     r = requests.get(COINGECKO_URL, params=COINGECKO_PARAMS, timeout=10)
     data = r.json()
 
-    # نرخ دلار به ریال
     r2 = requests.get(EXCHANGE_URL, timeout=10)
-    ir_rate = r2.json().get("rates", {}).get("IRR", 42000)  # پیش‌فرض 42000
+    ir_rate = r2.json().get("rates", {}).get("IRR", 42000)
 
     rss = build_rss(data, ir_rate)
     CACHE["rss"] = rss
@@ -82,4 +77,5 @@ def ton_rss():
     return Response(rss, mimetype='application/rss+xml; charset=utf-8')
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
