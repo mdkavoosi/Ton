@@ -1,40 +1,4 @@
-from flask import Flask, Response
-import requests
-import time
-from datetime import datetime
-import os  # برای گرفتن پورت از Render
-
-app = Flask(__name__)
-
-CACHE = {"rss": None, "updated": 0}
-
-COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
-COINGECKO_PARAMS = {
-    "ids": "toncoin",
-    "vs_currencies": "usd,btc",
-    "include_24hr_change": "true",
-    "include_last_updated_at": "true"
-}
-
-EXCHANGE_URL = "https://api.exchangerate.host/latest?base=USD&symbols=IRR"
-
-def build_rss(data, ir_rate):
-    now = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
-    price = data.get("toncoin", {})
-    usd = price.get("usd", "n/a")
-    btc = price.get("btc", "n/a")
-    change_24h = price.get("usd_24h_change", 0)
-    ir = round(usd * ir_rate)
-    updated_at = price.get("last_updated_at", int(time.time()))
-    updated_iso = datetime.utcfromtimestamp(updated_at).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-    title = f"Toncoin (TON) قیمت: ${usd} | {ir} IRR"
-    description = f"""💵 قیمت دلاری: {usd} USD
-🇮🇷 قیمت ریالی: {ir} IRR
-⏱ آخرین بروزرسانی: {updated_iso}
-🔺 تغییر 24 ساعته: {change_24h:.2f}%
-💹 قیمت BTC: {btc}
-🔗 منبع: https://www.coingecko.com/en/coins/toncoin
+https://api.coingecko.com/api/v3/simple/price🔗 منبع: https://www.coingecko.com/en/coins/toncoin
 """
 
     item = f"""<item>
