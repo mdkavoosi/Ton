@@ -10,8 +10,8 @@ app = Flask(__name__)
 ITEM_CACHE = deque(maxlen=10)
 CACHE = {"updated": 0}
 
-# Endpoint ساده CoinGecko برای TON
-COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd,btc&include_24hr_change=true&include_last_updated_at=true"
+# لینک جدید DIA برای TON
+DIA_URL = "https://api.diadata.org/v1/assetQuotation/Ton/0x0000000000000000000000000000000000000000"
 EXCHANGE_URL = "https://api.exchangerate.host/latest?base=USD&symbols=IRR"
 
 RENDER_URL = "https://ton-1-rleg.onrender.com/ton.rss"
@@ -20,29 +20,26 @@ def build_item(data, ir_rate):
     now = datetime.utcnow()
     now_str = now.strftime("%a, %d %b %Y %H:%M:%S +0000")
 
-    coin = data.get("the-open-network", {})
+    # تلاش برای خواندن داده از DIA
+    price_usd = data.get("price", 0)
+    volume_24h = data.get("volume24h", 0)
+    # می‌توان مقادیر دیگری چون market_cap را اضافه کرد اگر وجود داشته باشند
 
-    usd = coin.get("usd", 0)
-    btc = coin.get("btc", 0)
-    change_24h = coin.get("usd_24h_change", 0)
-    updated_ts = coin.get("last_updated_at", int(time.time()))
+    ir = round(price_usd * ir_rate)
 
-    ir = round(usd * ir_rate)
-
-    updated_utc = datetime.utcfromtimestamp(updated_ts).strftime("%Y-%m-%d %H:%M:%S UTC")
+    updated_utc = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     iran_offset = timedelta(hours=3, minutes=30)
-    updated_iran = (datetime.utcfromtimestamp(updated_ts) + iran_offset).strftime("%Y-%m-%d %H:%M:%S IRST")
+    updated_iran = (now + iran_offset).strftime("%Y-%m-%d %H:%M:%S IRST")
 
-    title = f"Toncoin (TON) قیمت: ${usd} | {ir} ریال"
-    description = f"""💵 قیمت دلاری: {usd} USD
+    title = f"Toncoin (TON) قیمت: ${price_usd} | {ir} ریال"
+    description = f"""💵 قیمت دلاری: {price_usd} USD
 🇮🇷 قیمت ریالی: {ir} IRR
 ⏱ آخرین بروزرسانی: {updated_utc} | {updated_iran}
-🔺 تغییر 24ساعته: {change_24h:.2f}%
-💹 قیمت BTC: {btc}
-🔗 منبع: https://www.coingecko.com/en/coins/the-open-network
+📊 حجم معاملات ۲۴ساعت: ${volume_24h}
+🔗 منبع: DIA Price Feed
 """
 
-    guid = f"ton-{int(time.time()*1000)}"
+    guid = f"ton-dia-{int(time.time()*1000)}"
     item_xml = f"""<item>
   <title>{title}</title>
   <description><![CDATA[{description}]]></description>
@@ -53,14 +50,15 @@ def build_item(data, ir_rate):
     return item_xml
 
 def fetch_and_cache():
+    # کش ۶۰ثانیه
     if time.time() - CACHE["updated"] < 60:
         return
 
     try:
-        r = requests.get(COINGECKO_URL, timeout=10)
+        r = requests.get(DIA_URL, timeout=10)
         data = r.json()
     except:
-        data = {"the-open-network": {}}
+        data = {"price": 0, "volume24h": 0}
 
     try:
         r2 = requests.get(EXCHANGE_URL, timeout=10)
@@ -75,7 +73,7 @@ def fetch_and_cache():
 @app.route("/")
 def home():
     return """
-    <h2>Toncoin RSS Feed آماده و صحیح</h2>
+    <h2>Toncoin RSS Feed با DIA</h2>
     <p>برای مشاهده فید: <a href="/ton.rss">ton.rss</a></p>
     """
 
@@ -91,7 +89,7 @@ def ton_rss():
   <title>Toncoin (TON) قیمت لحظه‌ای</title>
   <link>https://ton-1-rleg.onrender.com/</link>
   <atom:link href="{RENDER_URL}" rel="self" type="application/rss+xml" />
-  <description>فید حرفه‌ای قیمت Toncoin از CoinGecko</description>
+  <description>فید قیمت Toncoin (DIA) — به‌روزرسانی هر دقیقه</description>
   <lastBuildDate>{now}</lastBuildDate>
   {items}
 </channel>
