@@ -3,21 +3,26 @@ import requests
 import time
 from datetime import datetime, timedelta
 import os
+from collections import deque
 
 app = Flask(__name__)
 
-CACHE = {"rss": None, "updated": 0}
+# نگهداری 10 آیتم آخر
+ITEM_CACHE = deque(maxlen=10)
+CACHE = {"updated": 0}
 
-COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/the-open-network"
-# note: ID در اینجا "the‑open‑network" است برای TON براساس مستندات CoinGecko 1
+COINGECKO_URL = "https://api.coingecko.com/api/v3/coins/the-open-network?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false"
 EXCHANGE_URL = "https://api.exchangerate.host/latest?base=USD&symbols=IRR"
 
-RENDER_URL = "https://ton‑1‑rleg.onrender.com/ton.rss"
+RENDER_URL = "https://ton-1-rleg.onrender.com/ton.rss"
 
-def build_rss(data, ir_rate):
-    now = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+def build_item(data, ir_rate):
+    now = datetime.utcnow()
+    now_str = now.strftime("%a, %d %b %Y %H:%M:%S +0000")
+
     market_data = data.get("market_data", {})
 
+    # مسیر دقیق JSON CoinGecko
     usd = market_data.get("current_price", {}).get("usd", 0)
     btc = market_data.get("current_price", {}).get("btc", 0)
     change_1h = market_data.get("price_change_percentage_1h_in_currency", {}).get("usd", 0)
@@ -51,29 +56,20 @@ def build_rss(data, ir_rate):
 🔗 منبع: https://www.coingecko.com/en/coins/the-open-network
 """
 
-    item = f"""<item>
+    guid = f"ton-{int(time.time()*1000)}"
+    item_xml = f"""<item>
   <title>{title}</title>
   <description><![CDATA[{description}]]></description>
-  <pubDate>{now}</pubDate>
-  <guid isPermaLink="false">ton-{int(time.time()*1000)}</guid>
+  <pubDate>{now_str}</pubDate>
+  <guid isPermaLink="false">{guid}</guid>
 </item>"""
 
-    rss = f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
-<channel>
-  <title>Toncoin (TON) قیمت لحظه‌ای</title>
-  <link>https://ton‑1‑rleg.onrender.com/</link>
-  <atom:link href="{RENDER_URL}" rel="self" type="application/rss+xml" />
-  <description>فید لحظه‌ای قیمت Toncoin از CoinGecko</description>
-  <lastBuildDate>{now}</lastBuildDate>
-  {item}
-</channel>
-</rss>"""
-    return rss
+    return item_xml
 
 def fetch_and_cache():
-    if time.time() - CACHE["updated"] < 60 and CACHE["rss"]:
-        return CACHE["rss"]
+    # کش 60 ثانیه
+    if time.time() - CACHE["updated"] < 60:
+        return
 
     try:
         r = requests.get(COINGECKO_URL, timeout=10)
@@ -87,22 +83,34 @@ def fetch_and_cache():
     except:
         ir_rate = 42000
 
-    rss = build_rss(data, ir_rate)
-    CACHE["rss"] = rss
+    item = build_item(data, ir_rate)
+    ITEM_CACHE.appendleft(item)  # آیتم جدید در اول لیست
     CACHE["updated"] = time.time()
-    return rss
 
 @app.route("/")
 def home():
     return """
-    <h2>Toncoin RSS Feed آماده</h2>
+    <h2>Toncoin RSS Feed حرفه‌ای با آرشیو</h2>
     <p>برای مشاهده فید: <a href="/ton.rss">ton.rss</a></p>
     """
 
 @app.route("/ton.rss")
 @app.route("/Ton.rss")
 def ton_rss():
-    rss = fetch_and_cache()
+    fetch_and_cache()
+    now = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+    items = "\n".join(ITEM_CACHE)
+    rss = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>Toncoin (TON) قیمت لحظه‌ای</title>
+  <link>https://ton-1-rleg.onrender.com/</link>
+  <atom:link href="{RENDER_URL}" rel="self" type="application/rss+xml" />
+  <description>فید حرفه‌ای قیمت Toncoin از CoinGecko</description>
+  <lastBuildDate>{now}</lastBuildDate>
+  {items}
+</channel>
+</rss>"""
     return Response(rss, mimetype='application/rss+xml; charset=utf-8')
 
 if __name__ == "__main__":
